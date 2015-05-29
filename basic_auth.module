@@ -11,6 +11,12 @@
  *     triggers a 401 and fails login to invalidate the header?!
  *
  *   * Failed login, pass errors back to the Basic realm message?
+ *
+ *   * Only allow auth for users with a given role?
+ *
+ *   * Allow anonymous on the site and use a specific URL to do HTTP auth.
+ *
+ *   * Only trigger HTTP auth on access denied pages (like /admin or /node/1/edit).
  */
 
 /**
