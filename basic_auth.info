@@ -1,0 +1,4 @@
+name = Basic Auth
+description = Force all users to your site to be validated as a user using Basic HTTP Authentication
+core = 7.x
+dependencies[] = user

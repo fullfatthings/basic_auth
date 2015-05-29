@@ -1,0 +1,84 @@
+<?php
+/**
+ * @file
+ * Provides a way to log into a Drupal site using Basic Auth while maintaining
+ * Drupal's standard authentication process such as flood control and blocked
+ * users.
+ *
+ * TODO:
+ *   * Log out; As the browser persists the Basic Auth header, logging out results
+ *     in you immediately getting logged back in. Possibly need an AJAX call which
+ *     triggers a 401 and fails login to invalidate the header?!
+ *
+ *   * Failed login, pass errors back to the Basic realm message?
+ */
+
+/**
+ * Implements hook_init().
+ */
+function basic_auth_init() {
+  // Cannot use hook_boot, as user.module and common.inc are not loaded.
+
+  // Bail if logged in already
+  if (user_is_logged_in()) {
+    return;
+  }
+
+  // Attempt to authenticate user.
+  $user = $pass = FALSE;
+  // This CGI code is borrowed from the Shield module.
+  if (substr(php_sapi_name(), 0, 3) == 'cgi') {
+    // We have (some sort of) CGI.
+    if (isset($_SERVER['REDIRECT_REMOTE_USER'])) {
+      $auth_var = 'REDIRECT_REMOTE_USER';
+    }
+    else {
+      $auth_var = 'REMOTE_USER';
+    }
+    if (!empty($_SERVER[$auth_var])) {
+      list($user, $pass) = explode(':', base64_decode(substr($_SERVER[$auth_var], 6)));
+    }
+  }
+  else {
+    // We have mod_php.
+    if (!empty($_SERVER['PHP_AUTH_USER']) && isset($_SERVER['PHP_AUTH_PW'])) {
+      $user = $_SERVER['PHP_AUTH_USER'];
+      $pass = $_SERVER['PHP_AUTH_PW'];
+    }
+  }
+
+
+  if ($user && $pass) {
+    // Try to login
+    $form_state = array(
+      'values' => array(
+        'name' => $user,
+        'pass' => $pass,
+      )
+    );
+    user_login_name_validate(NULL, $form_state);
+    user_login_authenticate_validate(NULL, $form_state);
+    user_login_final_validate(NULL, $form_state);
+    if (!form_get_errors()) {
+      user_login_submit(NULL, $form_state);
+      drupal_goto('<front>');
+      return;
+    }
+  }
+
+  // No login attempted, force htaccess prompt.
+  if ($user) {
+    $print = 'Login failed for [user]';
+  }
+  else {
+    $print = 'Authentication needed';
+  }
+
+  $headers = array(
+    'WWW-Authenticate' => sprintf('Basic realm="TEST %s"', strtr($print, array('[user]' => $user, '[pass]' => $pass))),
+    'status' => '401 Unauthorized',
+  );
+
+  drupal_send_headers($headers, TRUE);
+  exit;
+}
