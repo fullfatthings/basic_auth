@@ -19,14 +19,30 @@
  *   * Only trigger HTTP auth on access denied pages (like /admin or /node/1/edit).
  */
 
+
+/**
+ * Determine status of Basic Auth.
+ *
+ * @return bool  TRUE if the system should be disabled.
+ */
+function basic_auth_status_disabled() {
+  $enabled = basic_auth_variable_get('basic_auth_enabled');
+  $cli = (drupal_is_cli() && basic_auth_variable_get('basic_auth_allow_cli'));
+  $logged_in = user_is_logged_in();
+
+  // Disabled if any of these are TRUE.
+  return ($cli || !$enabled || $logged_in);
+}
+
+
 /**
  * Implements hook_init().
  */
 function basic_auth_init() {
   // Cannot use hook_boot, as user.module and common.inc are not loaded.
 
-  // Bail if logged in already
-  if (user_is_logged_in()) {
+  // Bail if the system is disabled.
+  if (basic_auth_status_disabled()) {
     return;
   }
 
@@ -65,6 +81,13 @@ function basic_auth_init() {
     user_login_name_validate(NULL, $form_state);
     user_login_authenticate_validate(NULL, $form_state);
     user_login_final_validate(NULL, $form_state);
+
+    // Check this user has the Basic Auth permission
+    $account = user_load($form_state['uid']);
+    if (!user_access('allow basic auth', $account)) {
+      form_set_error('name', basic_auth_variable_get('basic_auth_role_denied_message'));
+    }
+
     if (!form_get_errors()) {
       user_login_submit(NULL, $form_state);
       drupal_goto('<front>');
@@ -87,4 +110,56 @@ function basic_auth_init() {
 
   drupal_send_headers($headers, TRUE);
   exit;
+}
+
+
+/**
+ * Implements hook_permission().
+ */
+function basic_auth_permission() {
+  return array(
+    'allow basic auth' => array(
+      'title' => t('Allow login using Basic Auth'),
+      'description' => t('Grants users with this permission ability to log in using HTTP Basic Auth.'),
+    ),
+    'administer basic auth' => array(
+      'title' => t('Administer Basic Auth'),
+      'description' => t('Allow users with this permission to configure the Basic Auth module.'),
+    )
+  );
+}
+
+
+/**
+ * Implements hook_menu().
+ */
+function basic_auth_menu() {
+  $items = array();
+
+  $items['admin/config/people/basic_auth'] = array(
+    'title' => 'Configure Basic Auth',
+    'description' => 'Change the settings for the Basic Auth module.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('basic_auth_admin_form'),
+    'access arguments' => array('administer basic auth'),
+    'file' => 'basic_auth.admin.inc',
+  );
+
+  return $items;
+}
+
+
+/**
+ * Wrapper for variable_get() to centralise default settings.
+ * @param  $name String   The variable to look up.
+ * @return mixed          The value of the variable.
+ */
+function basic_auth_variable_get($name) {
+  $defaults = array(
+    'basic_auth_role_denied_message' => t('Login denied'),
+    'basic_auth_allow_cli' => TRUE,
+    'basic_auth_enabled' => TRUE,
+  );
+
+  return variable_get($name, $defaults[$name]);
 }
