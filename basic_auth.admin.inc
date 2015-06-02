@@ -5,10 +5,24 @@
  * Provides the admin interface for the Basic Auth module
  */
 
+
+/**
+ * Basic Auth Admin Form.
+ *
+ * Lets users configure the Basic Auth settings.
+ *
+ * @param array $form
+ *   Initialised Form from Drupal
+ * @param array $form_state
+ *   Form State passed to the form
+ *
+ * @return mixed
+ *   The form with all elements populated
+ */
 function basic_auth_admin_form($form, &$form_state) {
   $form['basic_auth_enabled'] = array(
     '#type' => 'checkbox',
-    '#title' => t('Basic Auth Enabled'),
+    '#title' => t('Basic Auth enabled'),
     '#description' => t('Unticking this will disabled Basic Auth on the site.'),
     '#default_value' => basic_auth_variable_get('basic_auth_enabled'),
   );
@@ -20,11 +34,25 @@ function basic_auth_admin_form($form, &$form_state) {
     '#default_value' => basic_auth_variable_get('basic_auth_allow_cli'),
   );
 
-  $form['basic_auth_role_denied_message'] = array(
+  $form['basic_auth_allow_anonymous'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Allow anonymous visitors'),
+    '#description' => t('When ticked, anonymous users can access the site. Basic Auth will be accepted if provided in the header to authorize.'),
+    '#default_value' => basic_auth_variable_get('basic_auth_allow_anonymous'),
+  );
+
+  $form['basic_auth_enable_force_login_path'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable force login path'),
+    '#description' => t('When ticked, a !path path will be provided to force HTTP Auth on.', array('!path' => l('/basicauth', 'basicauth'))),
+    '#default_value' => basic_auth_variable_get('basic_auth_enable_force_login_path'),
+  );
+
+  $form['basic_auth_realm'] = array(
     '#type' => 'textfield',
-    '#title' => t('Access Denied Message for Roles'),
-    '#description' => t('If access is denied due to role, this message is returned in the realm.'),
-    '#default_value' => basic_auth_variable_get('basic_auth_role_denied_message'),
+    '#title' => t('Basic Auth Realm'),
+    '#description' => t('The default realm to show the user when prompted for login.'),
+    '#default_value' => basic_auth_variable_get('basic_auth_realm'),
   );
 
   return system_settings_form($form);

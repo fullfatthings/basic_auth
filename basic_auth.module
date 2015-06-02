@@ -6,24 +6,17 @@
  * users.
  *
  * TODO:
- *   * Log out; As the browser persists the Basic Auth header, logging out results
- *     in you immediately getting logged back in. Possibly need an AJAX call which
- *     triggers a 401 and fails login to invalidate the header?!
- *
- *   * Failed login, pass errors back to the Basic realm message?
- *
- *   * Only allow auth for users with a given role?
- *
- *   * Allow anonymous on the site and use a specific URL to do HTTP auth.
- *
- *   * Only trigger HTTP auth on access denied pages (like /admin or /node/1/edit).
+ *   * Log out; As the browser persists the Basic Auth header, logging out
+ *     results in you immediately getting logged back in. Possibly need an AJAX
+ *     call which triggers a 401 and fails login to invalidate the header?!
  */
 
 
 /**
  * Determine status of Basic Auth.
  *
- * @return bool  TRUE if the system should be disabled.
+ * @return bool
+ *   TRUE if the system should be disabled.
  */
 function basic_auth_status_disabled() {
   $enabled = basic_auth_variable_get('basic_auth_enabled');
@@ -69,47 +62,70 @@ function basic_auth_init() {
     }
   }
 
-
   if ($user && $pass) {
-    // Try to login
+    // Try to login.
     $form_state = array(
       'values' => array(
         'name' => $user,
         'pass' => $pass,
-      )
+      ),
     );
     user_login_name_validate(NULL, $form_state);
     user_login_authenticate_validate(NULL, $form_state);
     user_login_final_validate(NULL, $form_state);
 
-    // Check this user has the Basic Auth permission
+    // Check this user has the Basic Auth permission.
     $account = user_load($form_state['uid']);
     if (!user_access('allow basic auth', $account)) {
-      form_set_error('name', basic_auth_variable_get('basic_auth_role_denied_message'));
+      return;
     }
 
     if (!form_get_errors()) {
       user_login_submit(NULL, $form_state);
-      drupal_goto('<front>');
+      drupal_goto(current_path());
       return;
     }
   }
 
-  // No login attempted, force htaccess prompt.
-  if ($user) {
-    $print = 'Login failed for [user]';
-  }
-  else {
-    $print = 'Authentication needed';
+  // No login attempt, is anonymous allowed?
+  if (empty($user) && basic_auth_variable_get('basic_auth_allow_anonymous')) {
+    // Anon is allowed, continue without prompting for auth.
+    return;
   }
 
+  basic_auth_send_401_unauthorized();
+}
+
+
+/**
+ * Implements hook_page_alter().
+ */
+function basic_auth_page_alter(&$page) {
+  // If Basic Auth is not disabled AND
+  // We are triggering on 403's AND
+  // The curernt page is a 403...
+  if (!basic_auth_status_disabled() && basic_auth_variable_get('basic_auth_trigger_on_access_denied') && (drupal_get_http_header('Status') == '403 Forbidden')) {
+    // Send a 401, but dont render the Authorization required page, keep the
+    // Access Denied one.
+    basic_auth_send_401_unauthorized(FALSE);
+  }
+}
+
+/**
+ * Send a 401 unauthorized header to the client to force a HTTP Auth.
+ */
+function basic_auth_send_401_unauthorized($render_page = TRUE) {
   $headers = array(
-    'WWW-Authenticate' => sprintf('Basic realm="TEST %s"', strtr($print, array('[user]' => $user, '[pass]' => $pass))),
-    'status' => '401 Unauthorized',
+    'WWW-Authenticate' => 'Basic realm="' . check_plain(basic_auth_variable_get('basic_auth_realm')) . '"',
+    'Status' => '401 Unauthorized',
   );
 
   drupal_send_headers($headers, TRUE);
-  exit;
+
+  if ($render_page) {
+    print drupal_render_page(t('Authorization required'));
+    exit;
+  }
 }
 
 
@@ -125,7 +141,7 @@ function basic_auth_permission() {
     'administer basic auth' => array(
       'title' => t('Administer Basic Auth'),
       'description' => t('Allow users with this permission to configure the Basic Auth module.'),
-    )
+    ),
   );
 }
 
@@ -145,20 +161,47 @@ function basic_auth_menu() {
     'file' => 'basic_auth.admin.inc',
   );
 
+  $items['basicauth'] = array(
+    'title' => 'Force Basic Auth',
+    'page callback' => 'basic_auth_send_401_unauthorized',
+    'access callback' => 'basic_auth_force_basic_auth_access_callback',
+    'type' => MENU_CALLBACK,
+  );
+
   return $items;
 }
 
 
 /**
+ * Access callback for the 'basicauth' force path.
+ *
+ * Only available if enabled and the user is anonymous.
+ *
+ * @return bool
+ *   Can we get to the force basic auth page?
+ */
+function basic_auth_force_basic_auth_access_callback() {
+  return basic_auth_variable_get('basic_auth_enable_force_login_path') && user_is_anonymous();
+}
+
+
+/**
  * Wrapper for variable_get() to centralise default settings.
- * @param  $name String   The variable to look up.
- * @return mixed          The value of the variable.
+ *
+ * @param string $name
+ *   The variable to look up.
+ *
+ * @return mixed
+ *   The value of the variable.
  */
 function basic_auth_variable_get($name) {
   $defaults = array(
-    'basic_auth_role_denied_message' => t('Login denied'),
+    'basic_auth_realm' => variable_get('site_name', 'Drupal'),
     'basic_auth_allow_cli' => TRUE,
     'basic_auth_enabled' => TRUE,
+    'basic_auth_allow_anonymous' => FALSE,
+    'basic_auth_enable_force_login_path' => TRUE,
+    'basic_auth_trigger_on_access_denied' => TRUE,
   );
 
   return variable_get($name, $defaults[$name]);
