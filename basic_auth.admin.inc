@@ -48,6 +48,13 @@ function basic_auth_admin_form($form, &$form_state) {
     '#default_value' => basic_auth_variable_get('basic_auth_enable_force_login_path'),
   );
 
+  $form['basic_auth_trigger_on_access_denied'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Trigger on access denied pages'),
+    '#description' => t('If checked, any anonymous attempt to get to an access denied page will cause a basic auth prompt.'),
+    '#default_value' => basic_auth_variable_get('basic_auth_trigger_on_access_denied'),
+  );
+
   $form['basic_auth_realm'] = array(
     '#type' => 'textfield',
     '#title' => t('Basic Auth Realm'),
